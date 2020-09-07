@@ -4,7 +4,7 @@
  *	Implement the Intel Processor Trace driver
  *	Last revision: 01/06/2016
  *
- *  Copyright© 2016 Andrea Allievi, Richard Johnson 
+ *  Copyright© 2016 Andrea Allievi, Richard Johnson
  * 	Microsoft Ltd & TALOS Research and Intelligence Group
  *	All right reserved
  **********************************************************************/
@@ -14,7 +14,7 @@
 #include "Debug.h"
 #include "UndocNt.h"
 #include "IntelPtXSave.h"
-#include <hv.h>
+#include "hv.h"
 #include <intrin.h>
 
 #define DirectoryTableBaseOffset 0x28
@@ -24,9 +24,9 @@
 // Emit a REAL CpuId opcode (bypassing the Hypervisor if needed)
 void CPUIDEX(int CpuInfo[4], int Function, int Leaf) {
 	NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
-	if (g_pDrvData && g_pDrvData->IsUnderHyperV) 
+	if (g_pDrvData && g_pDrvData->IsUnderHyperV)
 	{
-		// If this is not the root partition, we normally do not have the 
+		// If this is not the root partition, we normally do not have the
 		// "CpuManagement" Partition privilege
 		if (g_pDrvData->HyperV_Data.Info.Features.PartitionPrivilegeMask.CpuManagement != 0)
 			ntStatus = HvCpuId(CpuInfo, Function, Leaf);
@@ -34,7 +34,7 @@ void CPUIDEX(int CpuInfo[4], int Function, int Leaf) {
 			// Rely on the standard CPUID instruction
 			ntStatus = STATUS_ACCESS_DENIED;
 	}
-	
+
 	if (!NT_SUCCESS(ntStatus))
 		return __cpuidex(CpuInfo, Function, Leaf);
 }
@@ -48,7 +48,7 @@ NTSTATUS CheckIntelPtSupport(INTEL_PT_CAPABILITIES * lpPtCap)
 
 	// Processor support for Intel Processor Trace is indicated by CPUID.(EAX=07H,ECX=0H):EBX[bit 25] = 1.
 	CPUIDEX(cpuid_ctx, 0x07, 0);
-	if ((cpuid_ctx[1] & (1 << 25)) == 0) 
+	if ((cpuid_ctx[1] & (1 << 25)) == 0)
 		return STATUS_NOT_SUPPORTED;
 
 	// We can return now if capability struct was not requested
@@ -78,14 +78,14 @@ NTSTATUS CheckIntelPtSupport(INTEL_PT_CAPABILITIES * lpPtCap)
 		ptCap.cycThresholdBmp = (SHORT)(cpuid_ctx[1] & 0xFFFF);
 		ptCap.psbFreqBmp = (SHORT)((cpuid_ctx[1] >> 16) & 0xFFFF);
 	}
- 
+
 	// Get if the PT is compatible with the Hypervisors here:
 	if (kIrql < DISPATCH_LEVEL)
 	{
 		__try
 		{
 			VmxMisc.All = __readmsr(MSR_IA32_VMX_MISC_CTLS);
-		} 
+		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
 		{
 			// Some Hypervisors (like HyperV) detect the read to VMX_MISC_CTLS and raise an exception
@@ -100,7 +100,7 @@ NTSTATUS CheckIntelPtSupport(INTEL_PT_CAPABILITIES * lpPtCap)
 	return STATUS_SUCCESS;
 }
 
-// Enable the Intel PT trace for current processor 
+// Enable the Intel PT trace for current processor
 NTSTATUS StartCpuTrace(PT_TRACE_DESC desc, PT_BUFFER_DESCRIPTOR * pPtBuffDesc) {
 	NTSTATUS ntStatus = STATUS_NOT_SUPPORTED;				// Returned NTSTATUS value
 	INTEL_PT_CAPABILITIES ptCap = { 0 };					// The per-processor PT capabilities
@@ -110,7 +110,7 @@ NTSTATUS StartCpuTrace(PT_TRACE_DESC desc, PT_BUFFER_DESCRIPTOR * pPtBuffDesc) {
 	ULONG curProcId = KeGetCurrentProcessorNumber();		// Current processor number
 	if (!pPtBuffDesc) return STATUS_INVALID_PARAMETER;
 	if (!g_pDrvData) return STATUS_INTERNAL_ERROR;
-	
+
 	// PT data structures
 	MSR_RTIT_CTL_DESC rtitCtlDesc = { 0 };
 	MSR_RTIT_STATUS_DESC rtitStatusDesc = { 0 };
@@ -135,16 +135,16 @@ NTSTATUS StartCpuTrace(PT_TRACE_DESC desc, PT_BUFFER_DESCRIPTOR * pPtBuffDesc) {
 
 	// To proper read the value of the CR3 register of a target process, the KiSwapProcess routines does this:
 	// From KTHREAD go to ETHREAD, then use the ApcState field to return back to a EPROCESS
-	// Finally grab it from peProc->DirectoryTableBase (offset + 0x28) 
+	// Finally grab it from peProc->DirectoryTableBase (offset + 0x28)
 	if (desc.peProc) {
 		targetCr3 = ((ULONG_PTR *)desc.peProc)[5];
 		// Check the found target CR3 (it should have the last 12 bits set to 0, due to the PFN standard)
-		if ((targetCr3 & 0xFFF) != 0) return STATUS_INVALID_ADDRESS;
+		//if ((targetCr3 & 0xFFF) != 0) return STATUS_INVALID_ADDRESS;
 		DrvDbgPrint("[" DRV_NAME "] Starting Intel Processor Trace for processor %i. Target CR3: 0x%llX\r\n", curProcId, targetCr3);
 	}
 	else if (desc.bTraceKernel)
 		DrvDbgPrint("[" DRV_NAME "] Starting Intel Processor Trace for processor %i. Tracing Kernel address space...\r\n", curProcId);
-	else 
+	else
 		DrvDbgPrint("[" DRV_NAME "] Starting Intel Processor Trace for processor %i. Tracing all user mode processes.\r\n", curProcId);
 
 	if (desc.dwNumOfRanges > 0)
@@ -195,7 +195,7 @@ NTSTATUS StartCpuTrace(PT_TRACE_DESC desc, PT_BUFFER_DESCRIPTOR * pPtBuffDesc) {
 	// Set the IA32_RTIT_OUTPUT and IA32_RTIT_OUTPUT_MASK_PTRS MSRs
 	if (pPtBuffDesc->bUseTopa)
 	{
-		// Use Table of Physical Addresses 
+		// Use Table of Physical Addresses
 		rtitCtlDesc.Fields.ToPA = 1;
 
 		// Set the proc_trace_table_base
@@ -226,14 +226,14 @@ NTSTATUS StartCpuTrace(PT_TRACE_DESC desc, PT_BUFFER_DESCRIPTOR * pPtBuffDesc) {
 	// Set the TRACE options:
 	TRACE_OPTIONS & options = lpProcPtData->TraceOptions;
 	rtitCtlDesc.Fields.FabricEn = 0;
-	rtitCtlDesc.Fields.Os = (desc.bTraceKernel ? 1 : 0);	// Trace Kernel address space	
+	rtitCtlDesc.Fields.Os = (desc.bTraceKernel ? 1 : 0);	// Trace Kernel address space
 	rtitCtlDesc.Fields.User = (desc.bTraceUser ? 1 : 0);	// Trace the user mode process
 	rtitCtlDesc.Fields.BranchEn = options.Fields.bTraceBranchPcks;
 
 	if (lpProcPtData->lpTargetProcCr3) {
-		// Set the page table filter for the target process 
-		__writemsr(MSR_IA32_RTIT_CR3_MATCH, (ULONGLONG)targetCr3);
-		ASSERT(__readmsr(MSR_IA32_RTIT_CR3_MATCH) == (ULONGLONG)targetCr3);
+		// Set the page table filter for the target process
+		__writemsr(MSR_IA32_RTIT_CR3_MATCH, (ULONGLONG)(targetCr3 & ~(0xfff)));
+		ASSERT(__readmsr(MSR_IA32_RTIT_CR3_MATCH) == (ULONGLONG)(targetCr3 & ~(0xfff)));
 		rtitCtlDesc.Fields.CR3Filter = 1;
 	}
 	else {
@@ -243,7 +243,7 @@ NTSTATUS StartCpuTrace(PT_TRACE_DESC desc, PT_BUFFER_DESCRIPTOR * pPtBuffDesc) {
 		rtitCtlDesc.Fields.CR3Filter = 0;
 	}
 
-	// Set the IP range flags and registers to 0 
+	// Set the IP range flags and registers to 0
 	rtitCtlDesc.Fields.Addr0Cfg = 0;
 	rtitCtlDesc.Fields.Addr1Cfg = 0;
 	rtitCtlDesc.Fields.Addr2Cfg = 0;
@@ -365,8 +365,8 @@ NTSTATUS StartCpuTrace(PT_TRACE_DESC desc, QWORD qwBuffSize)
 	return ntStatus;
 }
 
-// Start the Tracing of a particular usermode process 
-NTSTATUS StartProcessTrace(DWORD dwProcId, QWORD qwBuffSize) 
+// Start the Tracing of a particular usermode process
+NTSTATUS StartProcessTrace(DWORD dwProcId, QWORD qwBuffSize)
 {
 	NTSTATUS ntStatus = 0;
 	PEPROCESS peProc = NULL;
@@ -374,10 +374,10 @@ NTSTATUS StartProcessTrace(DWORD dwProcId, QWORD qwBuffSize)
 	if (!g_pDrvData) return STATUS_INTERNAL_ERROR;
 
 	// PsLookupProcessByProcessId should be executed at IRQL < DISPATCH_LEVEL
-	ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);				
+	ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
 	ntStatus = PsLookupProcessByProcessId((HANDLE)dwProcId, &peProc);
 
-	if (!NT_SUCCESS(ntStatus)) 
+	if (!NT_SUCCESS(ntStatus))
 		return ntStatus;
 	else {
 		// Compose the right data structure and pass the control to the main function
@@ -390,7 +390,7 @@ NTSTATUS StartProcessTrace(DWORD dwProcId, QWORD qwBuffSize)
 }
 
 // Put the tracing in PAUSE mode
-NTSTATUS PauseResumeTrace(BOOLEAN bPause) 
+NTSTATUS PauseResumeTrace(BOOLEAN bPause)
 {
 	MSR_RTIT_CTL_DESC rtitCtlDesc = { 0 };					// The RTIT MSR descriptor
 	MSR_RTIT_STATUS_DESC rtitStatusDesc = { 0 };			// The Status MSR descriptor
@@ -412,8 +412,8 @@ NTSTATUS PauseResumeTrace(BOOLEAN bPause)
 	rtitCtlDesc.All = __readmsr(MSR_IA32_RTIT_CTL);
 	rtitStatusDesc.All = __readmsr(MSR_IA32_RTIT_STATUS);
 
-	// XXX: This seems unnecessary 
-	// Update the STATUS register 
+	// XXX: This seems unnecessary
+	// Update the STATUS register
 	if (rtitCtlDesc.Fields.TraceEn == 0) {
 		rtitStatusDesc.Fields.Stopped = 0;
 		rtitStatusDesc.Fields.Error = 0;
@@ -421,13 +421,13 @@ NTSTATUS PauseResumeTrace(BOOLEAN bPause)
 	}
 
 	if (bPause)	{
-		// Pause Intel PT tracing 
+		// Pause Intel PT tracing
 		rtitCtlDesc.Fields.TraceEn = 0;
 	}
-	else 
+	else
 	{
 		PT_BUFFER_DESCRIPTOR * ptBuffDesc =	curCpuData.pPtBuffDesc;
-		// If we paused to dump buffer lets reset it 
+		// If we paused to dump buffer lets reset it
 		if (ptBuffDesc && ptBuffDesc->bUseTopa && ptBuffDesc->bBuffIsFull) {
 			// Restore the Topa Buffer, Set the proc_trace_table_base
 			rtitOutBaseDesc.All = (ULONGLONG)ptBuffDesc->u.ToPA.lpTopaPhysAddr;
@@ -448,7 +448,7 @@ NTSTATUS PauseResumeTrace(BOOLEAN bPause)
 	// Update the Control register
 	__writemsr(MSR_IA32_RTIT_CTL, rtitCtlDesc.All);
 
-	/* XXX: should not be needed 
+	/* XXX: should not be needed
 	if (kIrql <= DISPATCH_LEVEL) {
 		// STALL the execution for a little time
 		KeStallExecutionProcessor(42);
@@ -457,7 +457,7 @@ NTSTATUS PauseResumeTrace(BOOLEAN bPause)
 
 	// Read the final status
 	rtitStatusDesc.All = __readmsr(MSR_IA32_RTIT_STATUS);
-	
+
 	if (rtitStatusDesc.Fields.Error) {
 		curCpuData.curState = PT_PROCESSOR_STATE_ERROR;
 		return STATUS_UNSUCCESSFUL;
@@ -477,7 +477,7 @@ NTSTATUS PauseResumeTrace(BOOLEAN bPause)
 }
 
 // Disable Intel PT for the current processor
-NTSTATUS StopAndDisablePt() 
+NTSTATUS StopAndDisablePt()
 {
 	NTSTATUS ntStatus = STATUS_NOT_SUPPORTED;				// Returned NTSTATUS value
 	INTEL_PT_CAPABILITIES ptCap = { 0 };					// Intel Processor Tracing capabilities
@@ -542,11 +542,11 @@ NTSTATUS StopAndDisablePt()
 }
 
 // Get the active Trace options for a particular CPU
-NTSTATUS GetTraceOptions(DWORD dwCpuId, TRACE_OPTIONS * pOptions) 
+NTSTATUS GetTraceOptions(DWORD dwCpuId, TRACE_OPTIONS * pOptions)
 {
 	DWORD dwNumCpus = KeQueryActiveProcessorCount(NULL);
 	if (!g_pDrvData) return STATUS_INTERNAL_ERROR;
-	if (dwCpuId >= dwNumCpus) 
+	if (dwCpuId >= dwNumCpus)
 		return STATUS_INVALID_PARAMETER;
 
 	// Initialize the default trace options if not any is set
@@ -560,7 +560,7 @@ NTSTATUS GetTraceOptions(DWORD dwCpuId, TRACE_OPTIONS * pOptions)
 }
 
 // Set the trace options for a particular CPU
-NTSTATUS SetTraceOptions(DWORD dwCpuId, TRACE_OPTIONS opts) 
+NTSTATUS SetTraceOptions(DWORD dwCpuId, TRACE_OPTIONS opts)
 {
 	KAFFINITY curCpuAffinity = 0;
 	DWORD dwNumCpus = 0;
@@ -623,7 +623,7 @@ NTSTATUS SetDefaultTraceOptions(DWORD dwCpuId) {
 /* BRIEF EXPLANATION HERE
  * What is the difference between AllocCpuPtBuffer/FreeCpuResources and AllocPtBuffer/FreePtBuffer???
  * The 2 functions perform more or less the same work BUT in different ways:
- * AllocCpuPtBuffer/FreeCpuResources verify if the ONLY buffer associated with the CPU is legal and mapped 
+ * AllocCpuPtBuffer/FreeCpuResources verify if the ONLY buffer associated with the CPU is legal and mapped
  * to some User-mode address space. THERE IS ONLY ONE BUFFER PER CPU for the driver
  *
  * AllocPtBuffer/FreePtBuffer doesn't suffer for this limitations and are used even from external kernel modules.
@@ -834,11 +834,11 @@ NTSTATUS AllocAndSetTopa(PT_BUFFER_DESCRIPTOR ** lppBuffDesc, QWORD qwReqBuffSiz
 	}
 	RtlZeroMemory(pTopa, dwTopaSize);
 
-	// Create the ToPA 
+	// Create the ToPA
 	for (DWORD i = 0; i < dwNumEntriesInMdl; i++)  {
 		pTopa[i].Fields.BaseAddr = pfnArray[i];				// Pfn array contains the PFN offset, not the actual Physical address
 		pTopa[i].Fields.Size = 0;		// Encoding: 0 - 4K pages
-	} 
+	}
 
 	// LVT interrupt entry (if any)
 	if (bSetPmiAndStop) {
@@ -846,7 +846,7 @@ NTSTATUS AllocAndSetTopa(PT_BUFFER_DESCRIPTOR ** lppBuffDesc, QWORD qwReqBuffSiz
 		pTopa[dwNumEntriesInMdl - 1].Fields.Stop = 1;
 	}
 
-	// END entries 
+	// END entries
 	RtlZeroMemory(&pTopa[dwNumEntriesInMdl], sizeof(TOPA_TABLE_ENTRY));
 	pTopa[dwNumEntriesInMdl].Fields.BaseAddr = (ULONG_PTR)(topaPhysAddr.QuadPart >> 0xC);
 	pTopa[dwNumEntriesInMdl].Fields.End = 1;
@@ -870,7 +870,7 @@ NTSTATUS AllocAndSetTopa(PT_BUFFER_DESCRIPTOR ** lppBuffDesc, QWORD qwReqBuffSiz
 QWORD IsPtBufferAllocatedAndValid(DWORD dwCpuId, BOOLEAN bTestUserVa) {
 	PER_PROCESSOR_PT_DATA * pPerCpuData = NULL;
 	if (dwCpuId > KeQueryActiveProcessorCount(NULL)) return FALSE;
-	
+
 	pPerCpuData = &g_pDrvData->procData[dwCpuId];
 	if (bTestUserVa)
 		if (!pPerCpuData->lpUserVa) return 0;
@@ -917,7 +917,7 @@ NTSTATUS ClearCpuPtBuffer(DWORD dwCpuId) {
 
 // Map a physical page buffer to a User-mode process
 // Only one PT buffer per CPU supported in Usermode
-NTSTATUS MapTracePhysBuffToUserVa(DWORD dwCpuId) 
+NTSTATUS MapTracePhysBuffToUserVa(DWORD dwCpuId)
 {
 	PMDL pMdl = NULL;									// The new MDL describing the physical memory
 	LPVOID lpUserBuff = NULL;							// The user-mode accessible buffer
@@ -937,7 +937,7 @@ NTSTATUS MapTracePhysBuffToUserVa(DWORD dwCpuId)
 		pMdl = pPtBuffDesc->pTraceMdl;
 		if (!pMdl) return STATUS_INTERNAL_ERROR;
 	}
-	else 
+	else
 	{
 		// Simple-output scheme implementation
 		if (!pPtBuffDesc->u.Simple.lpTraceBuffPhysAddr)
@@ -960,11 +960,11 @@ NTSTATUS MapTracePhysBuffToUserVa(DWORD dwCpuId)
 
 	pCurProc = PsGetCurrentProcess();
 
-	// Now map the MDL to the current user-mode process 
+	// Now map the MDL to the current user-mode process
 	// If AccessMode is Usermode, the caller must be running at IRQL <= APC_LEVEL
-	lpUserBuff = MmMapLockedPagesSpecifyCache(pMdl, UserMode, MmCached, NULL, FALSE, NormalPagePriority);				
+	lpUserBuff = MmMapLockedPagesSpecifyCache(pMdl, UserMode, MmCached, NULL, FALSE, NormalPagePriority);
 
-	if (lpUserBuff) 
+	if (lpUserBuff)
 	{
 		g_pDrvData->procData[dwCpuId].lpUserVa = lpUserBuff;
 		g_pDrvData->procData[dwCpuId].lpMappedProc = pCurProc;
@@ -977,13 +977,13 @@ NTSTATUS MapTracePhysBuffToUserVa(DWORD dwCpuId)
 
 // Unmap the memory-mapped physical memory from usermode
 // Only one PT buffer per CPU supported in USER-mode
-NTSTATUS UnmapTraceBuffToUserVa(DWORD dwCpuId) 
+NTSTATUS UnmapTraceBuffToUserVa(DWORD dwCpuId)
 {
 	PEPROCESS pCurProc = NULL;						// The current EPROCESS target
 	PER_PROCESSOR_PT_DATA * pPerCpuData = &g_pDrvData->procData[dwCpuId];
 	pCurProc = PsGetCurrentProcess();
 
-	if (pPerCpuData->lpUserVa) 
+	if (pPerCpuData->lpUserVa)
 	{
 		BOOLEAN bExited = FALSE;
 		PEPROCESS pMappedProc = pPerCpuData->lpMappedProc;
@@ -992,7 +992,7 @@ NTSTATUS UnmapTraceBuffToUserVa(DWORD dwCpuId)
 			return STATUS_INTERNAL_ERROR;	// THIS SHOULD NEVER HAPPEN
 
 		// Get if the mapped process is already terminated
-		if (pMappedProc) 
+		if (pMappedProc)
 			bExited = PsGetProcessExitProcessCalled(pMappedProc);
 
 		if (pMappedProc && (bExited == FALSE) && (pCurProc != pMappedProc))
@@ -1000,7 +1000,7 @@ NTSTATUS UnmapTraceBuffToUserVa(DWORD dwCpuId)
 
 		if (!bExited)
 			MmUnmapLockedPages(pPerCpuData->lpUserVa, pPerCpuData->pPtBuffDesc->pTraceMdl);
-			
+
 		pPerCpuData->lpUserVa = NULL;
 		pPerCpuData->lpMappedProc = NULL;
 		ObDereferenceObject(pMappedProc);
@@ -1012,7 +1012,7 @@ NTSTATUS UnmapTraceBuffToUserVa(DWORD dwCpuId)
 #pragma region PMI Interrupt management code
 #pragma code_seg(".nonpaged")
 // Register the LVT (Local Vector Table) PMI interrupt
-NTSTATUS RegisterPmiInterrupt() 
+NTSTATUS RegisterPmiInterrupt()
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;						// Returned NTSTATUS
 	PMIHANDLER pNewPmiHandler = NULL;						// The new PMI handler routine
@@ -1038,8 +1038,8 @@ NTSTATUS RegisterPmiInterrupt()
 		apicPhys.QuadPart = ApicBase.All & (~0xFFFi64);
 		lpdwApicBase = (LPDWORD)MmMapIoSpace(apicPhys, 0x1000, MmNonCached);
 
-		if (lpdwApicBase) 
-		{ 
+		if (lpdwApicBase)
+		{
 			DrvDbgPrint("[" DRV_NAME "] Successfully mapped the local APIC to 0x%llX.\r\n", lpdwApicBase);
 			g_pDrvData->lpApicBase = lpdwApicBase;
 		} else
@@ -1054,9 +1054,9 @@ NTSTATUS RegisterPmiInterrupt()
 		// From Intel Manual: In x2APIC mode, system software uses RDMSR and WRMSR to access the APIC registers.
 	}
 
-	// The following functions must be stored in HalDispatchTable 
+	// The following functions must be stored in HalDispatchTable
 	// TODO: Find a way to proper get the old PMI interrupt handler routine. Search inside the HAL code?
-	// ntStatus = HalQuerySystemInformation(HalProfileSourceInformation, COUNTOF(lpBuff), (LPVOID)lpBuff, &dwBytesIo);		
+	// ntStatus = HalQuerySystemInformation(HalProfileSourceInformation, COUNTOF(lpBuff), (LPVOID)lpBuff, &dwBytesIo);
 
 	// Now set the new PMI handler, WARNING: we do not save and restore old handler
 	pNewPmiHandler = IntelPtPmiHandler;
@@ -1069,16 +1069,16 @@ NTSTATUS RegisterPmiInterrupt()
 	return ntStatus;
 }
 
-// Unregister and remove the LVT PMI interrupt 
+// Unregister and remove the LVT PMI interrupt
 NTSTATUS UnregisterPmiInterrupt()
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;						// Returned NTSTATUS
 	PMIHANDLER pOldPmiHandler = g_pDrvData->pOldPmiHandler;	// The old PMI handler
-		
+
 	// This is currently not restoring old PMI handler since we don't know how to retrieve it, just nulling it out
 	ntStatus = HalSetSystemInformation(HalProfileSourceInterruptHandler, sizeof(PMIHANDLER), (LPVOID)&pOldPmiHandler);
 
-	if (NT_SUCCESS(ntStatus)) 
+	if (NT_SUCCESS(ntStatus))
 	{
 		g_pDrvData->bPmiInstalled = FALSE;
 		if (g_pDrvData->lpApicBase)
@@ -1089,7 +1089,7 @@ NTSTATUS UnregisterPmiInterrupt()
 }
 
 // The PMI LVT handler routine (Warning! This should run at very high IRQL)
-VOID IntelPtPmiHandler(PKTRAP_FRAME pTrapFrame) 
+VOID IntelPtPmiHandler(PKTRAP_FRAME pTrapFrame)
 {
 	PKDPC pProcDpc = NULL;									// This processor DPC
 	MSR_IA32_PERF_GLOBAL_STATUS_DESC pmiDesc = { 0 };		// The PMI Interrupt descriptor
@@ -1125,7 +1125,7 @@ VOID IntelPtPmiHandler(PKTRAP_FRAME pTrapFrame)
 		// Queue a DPC only if the Default PMI handler is set
 		ptBuffDesc->bBuffIsFull = TRUE;
 
-		// The IRQL is too high so we use DPC 
+		// The IRQL is too high so we use DPC
 		pProcDpc = (PKDPC)ExAllocatePoolWithTag(NonPagedPool, sizeof(KDPC), MEMTAG);
 		KeInitializeDpc(pProcDpc, IntelPmiDpc, NULL);
 		KeSetTargetProcessorDpc(pProcDpc, (CCHAR)dwCurCpu);
@@ -1144,7 +1144,7 @@ VOID IntelPtPmiHandler(PKTRAP_FRAME pTrapFrame)
 	}
 
 	// Re-enable the PMI
-	if (g_pDrvData->bCpuX2ApicMode) 
+	if (g_pDrvData->bCpuX2ApicMode)
 	{
 		// Check Intel Manuals, Vol. 3A section 10-12
 		// The local APIC registers can be accessed via the MSR interface only when the local APIC has
@@ -1171,7 +1171,7 @@ VOID ApcKernelRoutine(PKAPC pApc, PKNORMAL_ROUTINE *NormalRoutine, PVOID *Normal
 	UNREFERENCED_PARAMETER(NormalContext);
 	UNREFERENCED_PARAMETER(SystemArgument1);
 	UNREFERENCED_PARAMETER(SystemArgument2);
-	// ??? What to do here?? 
+	// ??? What to do here??
 	// Simple only free the APC structure
 	if (pApc) ExFreePool(pApc);
 }
@@ -1224,7 +1224,7 @@ NTSTATUS ClearAndFreePmiCallbackList() {
 }
 
 // The PMI DPC routine
-VOID IntelPmiDpc(struct _KDPC *pDpc, PVOID DeferredContext, PVOID SystemArgument1, PVOID SystemArgument2) 
+VOID IntelPmiDpc(struct _KDPC *pDpc, PVOID DeferredContext, PVOID SystemArgument1, PVOID SystemArgument2)
 {
 	UNREFERENCED_PARAMETER(DeferredContext);
 	UNREFERENCED_PARAMETER(SystemArgument1);
@@ -1232,21 +1232,21 @@ VOID IntelPmiDpc(struct _KDPC *pDpc, PVOID DeferredContext, PVOID SystemArgument
 	DWORD dwCpuNum = KeGetCurrentProcessorNumber();			// This CPU number
 	ULONGLONG targetCr3 = 0ui64;							// The target CR3 register value
 	KIRQL kOldIrql = KeGetCurrentIrql();
-	
+
 	// A quick integrity check
 	ASSERT(dwCpuNum == (DWORD)SystemArgument1);
 
 	PER_PROCESSOR_PT_DATA & curCpuData = g_pDrvData->procData[dwCpuNum];	// This processor DPC data
-		
-	if (curCpuData.lpTargetProc) 
+
+	if (curCpuData.lpTargetProc)
 	{
 		// Verify that the Target CR3 still matches
 		targetCr3 = ((ULONGLONG*)curCpuData.lpTargetProc)[5];
 		ASSERT(targetCr3 == curCpuData.lpTargetProcCr3);
 
-		// queue work item to suspend the target process 
+		// queue work item to suspend the target process
 		PWORK_QUEUE_ITEM pWorkItem = (PWORK_QUEUE_ITEM)ExAllocatePoolWithTag(NonPagedPool, sizeof(WORK_QUEUE_ITEM) + sizeof(LPVOID), MEMTAG);
-		if (pWorkItem) 
+		if (pWorkItem)
 		{
 			ExInitializeWorkItem(pWorkItem, IntelPmiWorkItem, (PVOID)pWorkItem);
 			*((LPVOID*)(LPBYTE(pWorkItem) + sizeof(WORK_QUEUE_ITEM))) = (LPVOID)curCpuData.lpTargetProc;
@@ -1263,7 +1263,7 @@ VOID IntelPmiDpc(struct _KDPC *pDpc, PVOID DeferredContext, PVOID SystemArgument
 		PLIST_ENTRY pNextEntry = NULL,				// Next entry
 			pCurEntry = NULL;						// Current entry
 		PRKAPC pkApc = NULL;
-		
+
 		KeAcquireSpinLock(&g_pDrvData->userCallbackListLock, &kOldIrql);
 		pNextEntry = g_pDrvData->userCallbackList.Flink;
 		while (pNextEntry != &g_pDrvData->userCallbackList) {
@@ -1298,11 +1298,11 @@ VOID IntelPmiDpc(struct _KDPC *pDpc, PVOID DeferredContext, PVOID SystemArgument
 }
 
 // The PMI Work Item
-VOID IntelPmiWorkItem(PVOID Parameter) 
+VOID IntelPmiWorkItem(PVOID Parameter)
 {
-	PWORK_QUEUE_ITEM pWorkItem = NULL;					// This work item 
+	PWORK_QUEUE_ITEM pWorkItem = NULL;					// This work item
 	PEPROCESS pTargetProc = NULL;						// The Target Process
-	NTSTATUS ntStatus = STATUS_ABANDONED;				// The returned NTSTATUS 
+	NTSTATUS ntStatus = STATUS_ABANDONED;				// The returned NTSTATUS
 	DWORD dwProcId = 0;									// The target process ID
 
 	if (!Parameter) return;

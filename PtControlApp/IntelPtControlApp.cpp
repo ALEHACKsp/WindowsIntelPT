@@ -1,7 +1,7 @@
 /**********************************************************************
  *  Windows Intel Processor Trace (PT) Driver
  *  Filename: IntelPtControlApp.cpp
- *	Implement the entire PT driver's Control Application 
+ *	Implement the entire PT driver's Control Application
  *  Last revision: 12/01/2016
  *
  *  Copyright© 2016 Andrea Allievi, Richard Johnson
@@ -40,7 +40,7 @@ int NoCmdlineStartup()
 	SYSTEM_INFO sysInfo = { 0 };
 
 	// Allocate memory for the file names
-	lpOutBasePath = new TCHAR[MAX_PATH]; 
+	lpOutBasePath = new TCHAR[MAX_PATH];
 	RtlZeroMemory(lpOutBasePath, MAX_PATH * sizeof(TCHAR));
 
 	GetNativeSystemInfo(&sysInfo);
@@ -70,12 +70,12 @@ int NoCmdlineStartup()
 	// Create the Exit Event
 	g_appData.hExitEvt = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-	#pragma region 1. Generate Output dunp files base path string 
+	#pragma region 1. Generate Output dunp files base path string
 	SYSTEMTIME curTime = { 0 };
 	GetModuleFileName(GetModuleHandle(NULL), lpOutBasePath, MAX_PATH);
 	GetLocalTime(&curTime);
 	LPTSTR slashPtr = wcsrchr(lpOutBasePath, L'\\');
-	if (slashPtr) slashPtr[1] = 0; 
+	if (slashPtr) slashPtr[1] = 0;
 	swprintf_s(lpOutBasePath, MAX_PATH, L"%s%.2i%.2i-%.2i%.2i%.4i_Dumps",
 		lpOutBasePath, curTime.wHour, curTime.wMinute, curTime.wMonth, curTime.wDay, curTime.wYear);
 	CreateDirectory(lpOutBasePath, NULL);
@@ -103,7 +103,7 @@ int NoCmdlineStartup()
 			dwCpusCount = sysInfo.dwNumberOfProcessors;
 		} else
 			cpuAffinity = ((DWORD_PTR)(-1i64) >> ((sizeof(DWORD_PTR) * 8) - dwCpusCount));
-		if (FALSE) 
+		if (FALSE)
 			// If you would like to test the different affinities:
 			cpuAffinity = 0xd;
 		_ASSERT((sysInfo.dwActiveProcessorMask | cpuAffinity) == sysInfo.dwActiveProcessorMask);
@@ -112,11 +112,11 @@ int NoCmdlineStartup()
 		dwCpusCount = 1;
 	}
 	#pragma endregion
-	
+
 	#pragma region 3. Create the CPU buffer data structures and trace files
 	wprintf(L"Creating trace files (binary and readable)... ");
 	bRetVal = (BOOL)InitPerCpuData(cpuAffinity, lpOutBasePath);
-	if (bRetVal) 
+	if (bRetVal)
 		cl_wprintf(GREEN, L"Success!\r\n");
 	else {
 		RemoveDirectory(lpOutBasePath);
@@ -133,7 +133,7 @@ int NoCmdlineStartup()
 			wprintf(L"(in TEMP directory)\r\n");
 		}
 	}
-	
+
 	if (!bRetVal) {
 		RemoveDirectory(lpOutBasePath);
 		cl_wprintf(RED, L"Error!\r\n");
@@ -283,7 +283,7 @@ int NoCmdlineStartup()
 	ptStartStruct.dwTraceSize = g_appData.dwTraceBuffSize;
 	#pragma endregion
 
-	#pragma region 6. Optional - Allocate each PT CPU buffer (we can even skip this process, the START_TRACE IOCTL can do it for us) 
+	#pragma region 6. Optional - Allocate each PT CPU buffer (we can even skip this process, the START_TRACE IOCTL can do it for us)
 	LPVOID * lpBuffArray = new LPVOID[dwCpusCount];
 	RtlZeroMemory(lpBuffArray, sizeof(LPVOID)* dwCpusCount);
 	if (bManuallyAllocBuff) {
@@ -337,7 +337,7 @@ int NoCmdlineStartup()
 		}
 		else  {
 			TerminateProcess(pi.hProcess, -1);
-			cl_wprintf(RED, L"Error!\r\n");
+			cl_wprintf(RED, L"Error! %08x\r\n", (void*)dwLastErr);
 			bDeleteFiles = TRUE;
 		}
 	}
@@ -383,7 +383,7 @@ CloseTrace:
 	// Stop the Tracing (and clear the buffer if not manually allocated)
 	bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDRV_CLEAR_TRACE, (LPVOID)&cpuAffinity, sizeof(cpuAffinity), NULL, 0, &dwBytesIo, NULL);
 
-	CloseHandle(pi.hProcess); 
+	CloseHandle(pi.hProcess);
 	CloseHandle(pi.hThread);
 	FreePerCpuData(bDeleteFiles);
 	if (bManuallyAllocBuff)
@@ -451,12 +451,12 @@ bool FreePerCpuData(BOOL bDeleteFiles) {
 
 	for (int i = 0; i < (int)g_appData.dwNumOfActiveCpus; i++) {
 		pCpuDesc = &g_appData.pCpuDescArray[i];
-		if (pCpuDesc->hBinFile) { 
+		if (pCpuDesc->hBinFile) {
 			if (bDeleteFiles)
 				SetFileInformationByHandle(pCpuDesc->hBinFile, FileDispositionInfo, (LPVOID)&bDeleteFiles, sizeof(BOOL));
-			CloseHandle(pCpuDesc->hBinFile); pCpuDesc->hBinFile = NULL; 
+			CloseHandle(pCpuDesc->hBinFile); pCpuDesc->hBinFile = NULL;
 		}
-		if (pCpuDesc->hTextFile) { 
+		if (pCpuDesc->hTextFile) {
 			if (bDeleteFiles)
 				SetFileInformationByHandle(pCpuDesc->hTextFile, FileDispositionInfo, (LPVOID)&bDeleteFiles, sizeof(BOOL));
 			CloseHandle(pCpuDesc->hTextFile); pCpuDesc->hTextFile = NULL;
@@ -500,10 +500,10 @@ bool InitPerCpuData(ULONG_PTR kCpuAffinity, LPTSTR lpBasePath) {
 
 		newFileName[0] = 0;
 		swprintf_s(newFileName, MAX_PATH, L"%s\\cpu%.2i_bin.bin", lpBasePath, i);
-		// Create the binary file 
+		// Create the binary file
 		hNewFile = CreateFile(newFileName, FILE_GENERIC_WRITE | DELETE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, 0, NULL);
 
-		// Create the text file 
+		// Create the text file
 		if (hNewFile != INVALID_HANDLE_VALUE) {
 			pCurCpuDesc->hBinFile = hNewFile;
 			newFileName[0] = 0;
@@ -575,22 +575,22 @@ BOOL SpawnSuspendedProcess(LPTSTR lpAppName, LPTSTR lpCmdLine, PROCESS_INFORMATI
 	STARTUPINFO si = { 0 };							// The process Startup options
 	ULONG_PTR ulBytesIo = 0;						// Number of I/O bytes
 	LPVOID lpRemBuff = NULL;						// Remote memory buffer
-	HANDLE hRemoteThr = NULL;						// The remote thread stub 
+	HANDLE hRemoteThr = NULL;						// The remote thread stub
 	BOOL bRetVal = FALSE;							// Win32 return value
 	DWORD dwThrId = 0;								// Remote thread ID
 
 	si.cb = sizeof(STARTUPINFO);
 	bRetVal = CreateProcess(lpAppName, lpCmdLine, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);
 
-	// To get the remote image base address I need to instruct the Windows loader to load the 
+	// To get the remote image base address I need to instruct the Windows loader to load the
 	// Target image file in memory, and to compile the PEB
 	lpRemBuff = VirtualAllocEx(pi.hProcess, NULL, 4096, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	if (lpRemBuff) 
+	if (lpRemBuff)
 		bRetVal = WriteProcessMemory(pi.hProcess, lpRemBuff, (LPCVOID)remote_opcodes, sizeof(remote_opcodes), (SIZE_T*)&ulBytesIo);
 	else
 		bRetVal = FALSE;
 
-	if (bRetVal) 
+	if (bRetVal)
 		hRemoteThr = CreateRemoteThread(pi.hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)lpRemBuff, NULL, 0, &dwThrId);
 
 	if (hRemoteThr) {
@@ -609,7 +609,7 @@ BOOL SpawnSuspendedProcess(LPTSTR lpAppName, LPTSTR lpCmdLine, PROCESS_INFORMATI
 	}
 }
 
-// The PMI interrupt Thread 
+// The PMI interrupt Thread
 DWORD WINAPI PmiThreadProc(LPVOID lpParameter) {
 	LPTSTR lpEventName = L"Global\\" INTEL_PT_PMI_EVENT_NAME;
 	HANDLE hKernelEvt = NULL;
@@ -654,11 +654,11 @@ DWORD WINAPI PmiThreadProc(LPVOID lpParameter) {
 		BYTE zeroArray[16] = { 0 };
 		DWORD dwEndOffset = 0;
 
-		for (DWORD i = 0; i < pCurCpuBuff->dwBuffSize - sizeof(zeroArray); i += sizeof(zeroArray)) 
+		for (DWORD i = 0; i < pCurCpuBuff->dwBuffSize - sizeof(zeroArray); i += sizeof(zeroArray))
 			if (RtlCompareMemory(pCurCpuBuff->lpPtBuff + i, zeroArray, sizeof(zeroArray)) == sizeof(zeroArray)) {
 				dwEndOffset = i; break;
 			}
-		
+
 		if (!dwEndOffset) dwEndOffset = g_appData.pCpuDescArray[dwCpuNumber].dwBuffSize;
 		bRetVal = WriteFile(pCurCpuBuff->hBinFile, pCurCpuBuff->lpPtBuff, dwEndOffset, &dwBytesIo, NULL);
 		if (pCurCpuBuff->hTextFile) {
@@ -702,7 +702,7 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 
 	if (hTraceBinFile) {
 		bRetVal = WriteFile(hTraceBinFile, lpBuffer, (DWORD)qwBufferSize, &dwBytesIo, NULL);
-		
+
 		if (!bRetVal) {
 			cl_wprintf(RED, L"Warning! ");
 			wprintf(L"Unable to write in the log file. Results could be erroneous.\r\n");
@@ -718,7 +718,7 @@ VOID PmiCallback(DWORD dwCpuId, PVOID lpBuffer, QWORD qwBufferSize) {
 
 	// Resume the tracing and the execution of the target process
 	bRetVal = DeviceIoControl(g_appData.hPtDev, IOCTL_PTDRV_RESUME_TRACE, (LPVOID)&thisCpuAffinity, sizeof(KAFFINITY), NULL, 0, &dwBytesIo, NULL);
-	
+
 	if (!g_appData.currentTrace.bTraceKernel)
 		ZwResumeProcess(g_appData.hTargetProc);
 	if (g_appData.hMainThr) ResumeThread(g_appData.hMainThr);
@@ -734,7 +734,7 @@ bool DoKernelTrace(HANDLE hPtDev, PT_USER_REQ ptUserReq, LPTSTR lpDrvName) {
 	TCHAR answer[0x20] = { 0 };
 	LPVOID * lpBuffArray = NULL;
 	DWORD dwNumOfCpus = g_appData.dwNumOfActiveCpus;
-	
+
 	// Specific AaLl86 Driver data:
 	const LPTSTR DosDevName = L"\\\\.\\IntelPtTest";
 	LPTSTR lpKernelModName = L"ci.dll";
@@ -742,7 +742,7 @@ bool DoKernelTrace(HANDLE hPtDev, PT_USER_REQ ptUserReq, LPTSTR lpDrvName) {
 
 	#ifdef _DEBUG
 	if (bAaLl86Test && ptUserReq.dwTraceSize == 0) {
-		// Here theoretically I have to open the target driver module and insert the special BAD_OPCODE 
+		// Here theoretically I have to open the target driver module and insert the special BAD_OPCODE
 		// BUT I am too lazy.
 		wprintf(L"Testing Kernel-mode Tracing from a Kernel module... ");
 		// Send the special IOCTLs
@@ -780,7 +780,7 @@ bool DoKernelTrace(HANDLE hPtDev, PT_USER_REQ ptUserReq, LPTSTR lpDrvName) {
 
 	// Start the device Tracing
 	wprintf(L"Starting the Kernel-mode Tracing... ");
-	bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDRV_START_TRACE, (LPVOID)&ptUserReq, sizeof(PT_USER_REQ), 
+	bRetVal = DeviceIoControl(hPtDev, IOCTL_PTDRV_START_TRACE, (LPVOID)&ptUserReq, sizeof(PT_USER_REQ),
 		lpBuffArray, sizeof(LPVOID) * dwNumOfCpus, &dwBytesIo, NULL);
 	dwLastErr = GetLastError();
 
@@ -803,7 +803,7 @@ bool DoKernelTrace(HANDLE hPtDev, PT_USER_REQ ptUserReq, LPTSTR lpDrvName) {
 	if (bAaLl86Test) {
 		wprintf(L"Doing some test malicious activity (this could crash your system)... ");
 		// Test the Search Module IOCTL
-		bRetVal = DeviceIoControl(hTestDev, IOCTL_PTBUG_SEARCHKERNELMODULE, (LPVOID)lpKernelModName, (DWORD)(wcslen(lpKernelModName) + 1) * sizeof(WCHAR), 
+		bRetVal = DeviceIoControl(hTestDev, IOCTL_PTBUG_SEARCHKERNELMODULE, (LPVOID)lpKernelModName, (DWORD)(wcslen(lpKernelModName) + 1) * sizeof(WCHAR),
 			(LPVOID)&kernelMod,	sizeof(KERNEL_MODULE), &dwBytesIo, NULL);
 		dwLastErr = GetLastError();
 
@@ -831,6 +831,6 @@ bool DoKernelTrace(HANDLE hPtDev, PT_USER_REQ ptUserReq, LPTSTR lpDrvName) {
 		getwchar();
 	}
 
-	CloseHandle(hTestDev);	
+	CloseHandle(hTestDev);
 	return (bRetVal != FALSE);
 }

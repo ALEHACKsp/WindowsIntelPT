@@ -14,7 +14,7 @@
 #include "Debug.h"
 #include "UndocNt.h"
 #include "IntelPtXSave.h"
-#include <hv.h>
+#include "hv.h"
 
 const LPTSTR g_lpDevName = L"\\Device\\WindowsIntelPtDev";
 const LPTSTR g_lpDosDevName = L"\\DosDevices\\WindowsIntelPtDev";
@@ -22,7 +22,7 @@ const LPTSTR g_lpDosDevName = L"\\DosDevices\\WindowsIntelPtDev";
 // The global driver data
 DRIVER_GLOBAL_DATA * g_pDrvData = NULL;
 
-NTSTATUS DriverEntry(PDRIVER_OBJECT pDriverObject, PUNICODE_STRING pRegPath) 
+NTSTATUS DriverEntry(PDRIVER_OBJECT pDriverObject, PUNICODE_STRING pRegPath)
 {
 	UNREFERENCED_PARAMETER(pRegPath);
 	NTSTATUS ntStatus = STATUS_SUCCESS;
@@ -62,7 +62,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDriverObject, PUNICODE_STRING pRegPath)
 
 	// Check PT support
 	ntStatus = CheckIntelPtSupport(&ptCap);
-	if (!NT_SUCCESS(ntStatus)) 
+	if (!NT_SUCCESS(ntStatus))
 	{
 		DbgPrint("[" DRV_NAME "] Intel Processor Trace is not supported on this system. Exiting...\r\n");
 		RevertToDefaultDbgSettings();
@@ -80,7 +80,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDriverObject, PUNICODE_STRING pRegPath)
 	// Create a Pmi Event name and register the PMI interrupt
 	CreateSharedPmiEvent(INTEL_PT_PMI_EVENT_NAME);
 	RegisterPmiInterrupt();
-	// Initialize the user-mode callbacks list 
+	// Initialize the user-mode callbacks list
 	InitializeListHead(&g_pDrvData->userCallbackList);
 	KeInitializeSpinLock(&g_pDrvData->userCallbackListLock);
 
@@ -91,7 +91,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDriverObject, PUNICODE_STRING pRegPath)
 	// XXX: require admin to prevent side channel attacks on 3rd party programs (IoCreateDeviceSecure)
 	ntStatus = IoCreateDevice(pDriverObject, 0, &devNameString, FILE_DEVICE_UNKNOWN,
 		FILE_DEVICE_SECURE_OPEN, FALSE, &pDevObj);
-	
+
 	if (NT_SUCCESS(ntStatus)) {
 		ntStatus = IoCreateSymbolicLink(&dosDevNameString, &devNameString);
 		g_pDrvData->pMainDev = pDevObj;
@@ -114,16 +114,16 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDriverObject, PUNICODE_STRING pRegPath)
 	pDriverObject->MajorFunction[IRP_MJ_CREATE] = DevicePassThrough;
 	pDriverObject->MajorFunction[IRP_MJ_CLOSE] = DevicePassThrough;
 	pDriverObject->MajorFunction[IRP_MJ_CLEANUP] = DevicePassThrough;
-	pDriverObject->MajorFunction[IRP_MJ_READ] = DeviceUnsupported;		
-	pDriverObject->MajorFunction[IRP_MJ_WRITE] = DeviceUnsupported;	
-	
+	pDriverObject->MajorFunction[IRP_MJ_READ] = DeviceUnsupported;
+	pDriverObject->MajorFunction[IRP_MJ_WRITE] = DeviceUnsupported;
+
 	pDriverObject->DriverUnload = DriverUnload;
 
 	return STATUS_SUCCESS;
 }
 
 // Create the shared PMI event
-NTSTATUS CreateSharedPmiEvent(LPTSTR lpEvtName) 
+NTSTATUS CreateSharedPmiEvent(LPTSTR lpEvtName)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;					// Returned NT_STATUS value
 	DWORD dwNameLen = 0;								// Size in CHARs
@@ -178,7 +178,7 @@ NTSTATUS CreateSharedPmiEvent(LPTSTR lpEvtName)
 		else
 			ZwClose(hEvent);
 	}
-	
+
 	return ntStatus;
 }
 
@@ -188,7 +188,7 @@ NTSTATUS InitializeCpusXSaveArea() {
 	KAFFINITY activeProcessorsMask = 0;					// The active processors mask
 	DWORD dwNumOfProcs = 0;								// Total number of processor in the system
 	DWORD dwAreaSize = 0;								// The maximum XSAVE area size
-	
+
 	// Get the total number of system processors
 	dwNumOfProcs = KeQueryActiveProcessorCount(&activeProcessorsMask);
 
@@ -198,7 +198,7 @@ NTSTATUS InitializeCpusXSaveArea() {
 
 	for (int i = 0; i < (int)dwNumOfProcs; i++) {
 		PER_PROCESSOR_PT_DATA & pCurCpuData = g_pDrvData->procData[i];
-		LPVOID lpBuff = NULL; 
+		LPVOID lpBuff = NULL;
 		DWORD dwBuffSize = 0;
 
 		if (dwAreaSize > PAGE_SIZE)
@@ -219,12 +219,12 @@ NTSTATUS InitializeCpusXSaveArea() {
 	return STATUS_SUCCESS;
 }
 
-VOID UnloadPtDpc(struct _KDPC *Dpc, PVOID DeferredContext, PVOID SystemArgument1, PVOID SystemArgument2) 
+VOID UnloadPtDpc(struct _KDPC *Dpc, PVOID DeferredContext, PVOID SystemArgument1, PVOID SystemArgument2)
 {
 	UNREFERENCED_PARAMETER(Dpc);
 	UNREFERENCED_PARAMETER(SystemArgument1);
 	UNREFERENCED_PARAMETER(SystemArgument2);
-	
+
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	ULONG dwCurProc = 0;
 
@@ -234,7 +234,7 @@ VOID UnloadPtDpc(struct _KDPC *Dpc, PVOID DeferredContext, PVOID SystemArgument1
 	ntStatus = StopAndDisablePt();
 	ntStatus = FreeCpuResources(dwCurProc);
 
-	if (DeferredContext) 
+	if (DeferredContext)
 	{
 		// This is a pointer to the KEVENT, signal it without wait anything (It could be done at DISPATCH IRQL)
 		KeSetEvent((PRKEVENT)DeferredContext, IO_NO_INCREMENT, FALSE);
@@ -243,7 +243,7 @@ VOID UnloadPtDpc(struct _KDPC *Dpc, PVOID DeferredContext, PVOID SystemArgument1
 }
 
 // XXX: This will currently bugcheck if the IOCTL is called from within the traced process
-VOID DriverUnload(PDRIVER_OBJECT pDrvObj) 
+VOID DriverUnload(PDRIVER_OBJECT pDrvObj)
 {
 	UNREFERENCED_PARAMETER(pDrvObj);
 	NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
@@ -254,7 +254,7 @@ VOID DriverUnload(PDRIVER_OBJECT pDrvObj)
 	PAGED_CODE();
 
 	dwCurProc = KeGetCurrentProcessorNumber();
-	for (DWORD i = 0; i < g_pDrvData->dwNumProcs; i++) 
+	for (DWORD i = 0; i < g_pDrvData->dwNumProcs; i++)
 	{
 		KEVENT kUnloadEvent = { 0 };
 		PER_PROCESSOR_PT_DATA * procData = &g_pDrvData->procData[i];;
@@ -262,7 +262,7 @@ VOID DriverUnload(PDRIVER_OBJECT pDrvObj)
 
 		// This will fail if called from within the traced process
 		ntStatus = UnmapTraceBuffToUserVa(i);
-		if (!NT_SUCCESS(ntStatus)) 
+		if (!NT_SUCCESS(ntStatus))
 		{
 			// Memory mappings are inconsistent so we bugcheck
 			KeBugCheckEx(PROCESS_HAS_LOCKED_PAGES, 0x00, (ULONG_PTR)procData->lpMappedProc, procData->pPtBuffDesc->qwBuffSize / PAGE_SIZE, 0);
@@ -287,7 +287,7 @@ VOID DriverUnload(PDRIVER_OBJECT pDrvObj)
 	ClearAndFreePmiCallbackList();
 
 	// Unload the device object and the Symbolic Link
-	if (g_pDrvData->pMainDev) 
+	if (g_pDrvData->pMainDev)
 	{
 		// Delete the symbolic Link
 		RtlInitUnicodeString(&dosDevNameString, g_lpDosDevName);
@@ -302,7 +302,7 @@ VOID DriverUnload(PDRIVER_OBJECT pDrvObj)
 	// uninstall PMI
 	if (g_pDrvData->bPmiInstalled)
 		UnregisterPmiInterrupt();
-	
+
 	// delete the PMI event
 	if (g_pDrvData->hPmiEvent)
 		ZwClose(g_pDrvData->hPmiEvent);
@@ -312,7 +312,7 @@ VOID DriverUnload(PDRIVER_OBJECT pDrvObj)
 		ObDereferenceObject(g_pDrvData->pPmiEvent);
 	g_pDrvData->pPmiEvent = NULL;
 
-	if (g_pDrvData) 
+	if (g_pDrvData)
 		ExFreePool(g_pDrvData);
 
 	DbgPrint("[" DRV_NAME "] driver successfully unloaded.");

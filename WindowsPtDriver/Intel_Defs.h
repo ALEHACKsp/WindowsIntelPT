@@ -9,6 +9,7 @@
  *  All right reserved
  **********************************************************************/
 #pragma once
+#include <ntddk.h>
 
 #define MSR_IA32_PERF_GLOBAL_STATUS		0x0000038E
 #define MSR_IA32_APIC_BASE				0x0000001B			// The APIC base address register
@@ -106,7 +107,7 @@ union TOPA_TABLE_ENTRY {
 // IA32_RTIT_OUTPUTBASE MSR descriptor (paragraph 36.2.5.7)
 union MSR_RTIT_OUTPUTBASE_DESC {
 	struct {
-		QWORD Reserved : 7;					// [0:6] - Must be 0 
+		QWORD Reserved : 7;					// [0:6] - Must be 0
 		QWORD BasePhysAddr : MAXPHYADDR;	// [7:MAXPHYADDR-1] - The base physical address
 		QWORD Reserved2 : 57 - MAXPHYADDR;	// [MAXPHYADDR:63] - Must be 0
 	} Fields;
@@ -154,15 +155,15 @@ union LVT_Entry {
 	DWORD All;
 };
 
-// The IA32_PERF_GLOBAL_STATUS descriptor of Intel Broadwell microarchitecture 
+// The IA32_PERF_GLOBAL_STATUS descriptor of Intel Broadwell microarchitecture
 union MSR_IA32_PERF_GLOBAL_STATUS_DESC {
 	struct {
 		DWORD PMC0_OVF: 1;					// [0] - Read only
-		DWORD PMC1_OVF : 1;					// [1] - Read only 
+		DWORD PMC1_OVF : 1;					// [1] - Read only
 		DWORD PMC2_OVF : 1;					// [2] - Read only
 		DWORD PMC3_OVF : 1;					// [3] - Read only
 		DWORD PMC4_OVF : 1;					// [4] - Read only (if PMC4 present)
-		DWORD PMC5_OVF : 1;					// [5] - Read only (if PMC5 present) 
+		DWORD PMC5_OVF : 1;					// [5] - Read only (if PMC5 present)
 		DWORD PMC6_OVF : 1;					// [6] - Read only (if PMC6 present)
 		DWORD PMC7_OVF : 1;					// [7] - Read only (if PMC7 present)
 		DWORD Reserved : 24;				// [8:31] - Reserved
@@ -179,7 +180,7 @@ union MSR_IA32_PERF_GLOBAL_STATUS_DESC {
 	ULONGLONG All;
 };
 
-// The IA32_PERF_GLOBAL_OVF_CTRL descriptor of Intel Broadwell microarchitecture 
+// The IA32_PERF_GLOBAL_OVF_CTRL descriptor of Intel Broadwell microarchitecture
 // Global Performance Counter Overflow Control (Section 18-73 of System Programming Guide Volume 3B)
 union MSR_IA32_PERF_GLOBAL_OVF_CTRL_DESC {
 	struct {
@@ -188,7 +189,7 @@ union MSR_IA32_PERF_GLOBAL_OVF_CTRL_DESC {
 		DWORD PMC2_ClrOVF : 1;				// [2]
 		DWORD PMC3_ClrOVF : 1;				// [3]
 		DWORD PMC4_ClrOVF : 1;				// [4] - (if PMC4 present)
-		DWORD PMC5_ClrOVF : 1;				// [5] - (if PMC5 present) 
+		DWORD PMC5_ClrOVF : 1;				// [5] - (if PMC5 present)
 		DWORD PMC6_ClrOVF : 1;				// [6] - (if PMC6 present)
 		DWORD PMC7_ClrOVF : 1;				// [7] - (if PMC7 present)
 		DWORD Reserved : 24;				// [8:31] - Reserved

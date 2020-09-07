@@ -10,7 +10,7 @@
 **********************************************************************/
 #include "stdafx.h"
 #include "DriverEntry.h"
-#include <hv.h>
+#include "hv.h"
 #include "Debug.h"
 #include <intrin.h>
 
@@ -44,7 +44,7 @@ NTSTATUS DetectMicrosoftHyperV(HYPERV_INFO * HyperVInfo) {
 	HvInfo.ServiceBranch = (UCHAR)(CpuInfo[3] >> 24) & 0xFF;
 	HvInfo.ServiceNumber = (DWORD)(CpuInfo[3] & 0xFFFFFF);
 
-	// Grab the HyperV partition features 
+	// Grab the HyperV partition features
 	__cpuidex(CpuInfo, 0x40000003, 0);
 	RtlCopyMemory(&HvInfo.Features, CpuInfo, sizeof(HYPERV_FEATURES));
 
@@ -62,7 +62,7 @@ NTSTATUS HvCpuId(int CpuInfo[4], int Function, int SubLeaf) {
 	KIRQL OldIrql = 0;									// Previous processor IRQL
 	HV_STATUS HvStatus = 0;								// Returned status from the Hypervisor
 	PHYPERV_DATA pHvData = NULL;
-	
+
 	// Grab the global data
 	if (!g_pDrvData) return STATUS_INVALID_DEVICE_STATE;
 	pHvData = (PHYPERV_DATA)&g_pDrvData->HyperV_Data;
