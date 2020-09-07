@@ -753,6 +753,39 @@ NTSTATUS AllocPtBuffer(PT_BUFFER_DESCRIPTOR ** lppBuffDesc, QWORD qwSize, BOOLEA
 	return STATUS_SUCCESS;
 }
 
+_Must_inspect_result_
+_IRQL_requires_max_ (DISPATCH_LEVEL)
+NTKERNELAPI
+_Out_writes_bytes_opt_ (NumberOfBytes)
+PVOID
+MmMapIoSpaceEx (
+    _In_ PHYSICAL_ADDRESS PhysicalAddress,
+    _In_ SIZE_T NumberOfBytes,
+    _In_ ULONG Protect
+    );
+
+EXTERN_C
+NTSTATUS
+NTAPI
+WinHvCreateIptBuffers (
+    _In_ ULONG PageCount,
+    _In_ ULONG Unknown,
+    _Out_ PULONG64 PageFrameNumber
+    );
+using WINHVCREATEIPTBUFFERS = decltype(&WinHvCreateIptBuffers);
+
+EXTERN_C
+NTSTATUS
+NTAPI
+WinHvDeleteIptBuffers (
+    _In_ ULONG64 PageFrameNumber
+    );
+using WINHVDELETEIPTBUFFERS = decltype(&WinHvDeleteIptBuffers);
+
+static WINHVCREATEIPTBUFFERS gWinHvCreateIptBuffers;
+static WINHVDELETEIPTBUFFERS gWinHvDeleteIptBuffers;
+
+
 // Free a PT trace buffer (use with caution, avoid BSOD please)
 NTSTATUS FreePtBuffer(PT_BUFFER_DESCRIPTOR * ptBuffDesc) {
 	//ULONG dwCurCpu = 0;										// Current CPU number
@@ -765,18 +798,21 @@ NTSTATUS FreePtBuffer(PT_BUFFER_DESCRIPTOR * ptBuffDesc) {
 	if (ptBuffDesc->bUseTopa) {
 		// Free the ToPA table
 		if (ptBuffDesc->u.ToPA.lpTopaVa) {
-			MmFreeContiguousMemory(ptBuffDesc->u.ToPA.lpTopaVa);
+			MmUnmapIoSpace(ptBuffDesc->u.ToPA.lpTopaVa, PAGE_SIZE);
+			//MmFreeContiguousMemory(ptBuffDesc->u.ToPA.lpTopaVa);
 			ptBuffDesc->u.ToPA.lpTopaVa = NULL;
 			ptBuffDesc->u.ToPA.lpTopaPhysAddr = NULL;
 		}
 
 		// Free the actual physical memory
 		if (ptBuffDesc->pTraceMdl) {
-			// Free the used pages 
-			MmFreePagesFromMdl(ptBuffDesc->pTraceMdl);
+			// Free the used pages
+			//MmFreePagesFromMdl(ptBuffDesc->pTraceMdl);
 			ExFreePool(ptBuffDesc->pTraceMdl);
 			ptBuffDesc->pTraceMdl = NULL;
 		}
+
+		gWinHvDeleteIptBuffers(ptBuffDesc->u.ToPA.lpTopaPhysAddr >> PAGE_SHIFT);
 	}
 	else {
 		// Free the simple output region
@@ -814,6 +850,7 @@ NTSTATUS AllocAndSetTopa(PT_BUFFER_DESCRIPTOR ** lppBuffDesc, QWORD qwReqBuffSiz
 
 	if (qwReqBuffSize % PAGE_SIZE) return STATUS_INVALID_PARAMETER_2;
 
+#if 0
 	// Allocate the needed physical memory
 	pTraceBuffMdl = MmAllocatePagesForMdlEx(lowPhysAddr, highPhysAddr, lowPhysAddr, (SIZE_T)qwReqBuffSize + PAGE_SIZE, MmCached, MM_ALLOCATE_FULLY_REQUIRED);
 	if (!pTraceBuffMdl) return STATUS_INSUFFICIENT_RESOURCES;
@@ -850,6 +887,66 @@ NTSTATUS AllocAndSetTopa(PT_BUFFER_DESCRIPTOR ** lppBuffDesc, QWORD qwReqBuffSiz
 	RtlZeroMemory(&pTopa[dwNumEntriesInMdl], sizeof(TOPA_TABLE_ENTRY));
 	pTopa[dwNumEntriesInMdl].Fields.BaseAddr = (ULONG_PTR)(topaPhysAddr.QuadPart >> 0xC);
 	pTopa[dwNumEntriesInMdl].Fields.End = 1;
+#else
+	ULONG allocPageCount;
+	SIZE_T allocByteCount;
+	SIZE_T mdlSize;
+	PMDL mappedBufferMdl;
+	ULONG64 pfn;
+
+	//
+	// HACK: populate the address of Hyper-V Root Interface driver API
+	//
+	// > .reload winhvr.sys
+	// > eq windowsptdriver!gWinHvCreateIptBuffers winhvr!WinHvCreateIptBuffers
+	// > eq windowsptdriver!gWinHvDeleteIptBuffers winhvr!WinHvDeleteIptBuffers
+	//
+	__debugbreak();
+
+	allocByteCount = qwReqBuffSize;
+	allocPageCount = static_cast<ULONG>(BYTES_TO_PAGES(allocByteCount));
+
+	//
+	// Ask Hyper-V to allocate requested number of pages as PT buffer, build
+	// the ToPA page (4KB region) and return its PFN.
+	//
+	ntStatus = gWinHvCreateIptBuffers(allocPageCount, 1, &pfn);
+	if (!NT_SUCCESS(ntStatus)) return ntStatus;
+
+	//
+	// We need to read the ToPa page to get addresses of Hyper-V created buffers.
+	//
+	topaPhysAddr.QuadPart = (pfn << PAGE_SHIFT);
+	pTopa = (TOPA_TABLE_ENTRY *)MmMapIoSpaceEx(topaPhysAddr, PAGE_SIZE, PAGE_READONLY);
+	if (!pTopa) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	//
+	// We want to access those created buffers through MDL. Allocate an MDL
+	// that is large enough to cover all buffers.
+	//
+	mdlSize = MmSizeOfMdl(nullptr, allocByteCount);
+	mappedBufferMdl = static_cast<PMDL>(ExAllocatePoolWithTag(NonPagedPool, mdlSize, 'PPTI'));
+	if (mappedBufferMdl == nullptr) {
+		return STATUS_INSUFFICIENT_RESOURCES;	// FIXME: MmUnmapIoSpace(pTopa, PAGE_SIZE);
+	}
+
+	//
+	// Initialize the MDL for all buffers.
+	//
+	// ipt.sys does this after the loop. I do not think relevant
+	// mappedBufferMdl->MdlFlags |= MDL_PAGES_LOCKED | MDL_MAPPING_CAN_FAIL;
+	//
+	MmInitializeMdl(mappedBufferMdl, nullptr, allocByteCount);
+	for (ULONG i = 0; i < allocPageCount; ++i)
+	{
+		TOPA_TABLE_ENTRY* toPaEntry = &pTopa[i];
+		ULONG offset = sizeof(TOPA_TABLE_ENTRY) * (i + 1);
+		*(&mappedBufferMdl->ByteCount + offset) = toPaEntry->Fields.BaseAddr;
+	}
+	pTraceBuffMdl = mappedBufferMdl;
+#endif
 
 	// Now create the descriptor and set the ToPA data
 	if (lppBuffDesc) {
